@@ -22,8 +22,8 @@ A reusable Azure Logic App that monitors incoming bank transaction data via HTTP
 ---
 
 ## Folder Structure
-├── logicapp-template.json # ARM Template defining Logic App and workflow
-├── logicapp-parameters.json # Parameters file (environment-specific)
+├── LogicApp-bankTransactionAlert-template.json # ARM Template defining Logic App and workflow
+├── LogicApp-bankTransactionAlert-parameters.json # Parameters file (environment-specific)
 └── README.md # Project documentation
 
 ---
