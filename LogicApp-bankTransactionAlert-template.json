@@ -1,0 +1,227 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workflows_LA_BankTransactionAlert_name": {
+            "type": "string"
+        },
+        "connections_gmail_externalid": {
+            "type": "string"
+        },
+        "connections_excelonline_externalid": {
+            "type": "string"
+        },
+        "location": {
+            "type": "string"
+        },
+        "email_to": {
+            "type": "string"
+        },
+        "excel_drive_id": {
+            "type": "string"
+        },
+        "excel_file_path": {
+            "type": "string"
+        },
+        "excel_table_name": {
+            "type": "string"
+        },
+        "failed_transaction_email_to": {
+            "type": "string"
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('workflows_LA_BankTransactionAlert_name')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "When_a_HTTP_request_is_received": {
+                            "type": "Request",
+                            "kind": "Http",
+                            "inputs": {
+                                "method": "POST",
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "transactionId": { "type": "string" },
+                                        "user": { "type": "string" },
+                                        "amount": { "type": "number" },
+                                        "currency": { "type": "string" },
+                                        "location": { "type": "string" },
+                                        "timestamp": { "type": "string" },
+                                        "description": { "type": "string" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Try": {
+                            "actions": {
+                                "Condition_-_High_Amount_or_Non-INR": {
+                                    "actions": {
+                                        "Send_email_(V2)": {
+                                            "type": "ApiConnection",
+                                            "inputs": {
+                                                "host": {
+                                                    "connection": {
+                                                        "name": "@parameters('$connections')['gmail']['connectionId']"
+                                                    }
+                                                },
+                                                "method": "post",
+                                                "body": {
+                                                    "To": "[parameters('email_to')]",
+                                                    "Importance": "High",
+                                                    "Subject": "⚠️ High/Foreign Transaction Alert - @{triggerBody()?['user']}",
+                                                    "Body": "<p>🚨 <strong>Flagged Transaction Alert</strong></p>\n\n<p>A potentially suspicious transaction has been detected. Please review the details below:</p>\n\n<table style=\"border-collapse: collapse; font-family: Arial, sans-serif;\">\n  <tbody><tr>\n    <td style=\"padding: 6px;\"><strong>🆔 Transaction ID:</strong></td>\n    <td style=\"padding: 6px;\">@{triggerBody()?['transactionId']}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 6px;\"><strong>👤 User:</strong></td>\n    <td style=\"padding: 6px;\">@{triggerBody()?['user']}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 6px;\"><strong>💰 Amount:</strong></td>\n    <td style=\"padding: 6px;\">₹@{triggerBody()?['amount']}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 6px;\"><strong>💱 Currency:</strong></td>\n    <td style=\"padding: 6px;\">@{triggerBody()?['currency']}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 6px;\"><strong>📍 Location:</strong></td>\n    <td style=\"padding: 6px;\">@{triggerBody()?['location']}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 6px;\"><strong>📝 Description:</strong></td>\n    <td style=\"padding: 6px;\">@{triggerBody()?['description']}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 6px;\"><strong>🕒 Time:</strong></td>\n    <td style=\"padding: 6px;\">@{triggerBody()?['timestamp']}</td>\n  </tr>\n</tbody></table>\n\n<p>Please take necessary action if this transaction appears suspicious.</p>\n\n<p style=\"margin-top: 20px;\">\nThanks,<br>\n<strong>Transaction Monitoring Workflow</strong>\n</p>\n"
+                                                },
+                                                "path": "/v2/Mail"
+                                            }
+                                        },
+                                        "Add_a_row_into_a_table_-_Flagged": {
+                                            "runAfter": {
+                                                "Send_email_(V2)": ["Succeeded"]
+                                            },
+                                            "type": "ApiConnection",
+                                            "inputs": {
+                                                "host": {
+                                                    "connection": {
+                                                        "name": "@parameters('$connections')['excelonline']['connectionId']"
+                                                    }
+                                                },
+                                                "method": "post",
+                                                "body": {
+                                                    "TransactionId": "@triggerBody()?['transactionId']",
+                                                    "User": "@triggerBody()?['user']",
+                                                    "Amount": "@{triggerBody()?['amount']}",
+                                                    "Currency": "@triggerBody()?['currency']",
+                                                    "Location": "@triggerBody()?['location']",
+                                                    "Timestamp": "@triggerBody()?['timestamp']",
+                                                    "Description": "@triggerBody()?['description']",
+                                                    "FlaggedReason": "High Value or Foreign Currency"
+                                                },
+                                                "path": "/codeless/v1.2/drives/me/items/@{encodeURIComponent(parameters('excel_drive_id'))}/workbook/tables/@{encodeURIComponent(parameters('excel_table_name'))}/rows",
+                                                "queries": {
+                                                    "source": "me",
+                                                    "dateTimeFormat": "ISO 8601"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "else": {
+                                        "actions": {
+                                            "Add_a_row_into_a_table": {
+                                                "type": "ApiConnection",
+                                                "inputs": {
+                                                    "host": {
+                                                        "connection": {
+                                                            "name": "@parameters('$connections')['excelonline']['connectionId']"
+                                                        }
+                                                    },
+                                                    "method": "post",
+                                                    "body": {
+                                                        "TransactionId": "@triggerBody()?['transactionId']",
+                                                        "User": "@triggerBody()?['user']",
+                                                        "Amount": "@{triggerBody()?['amount']}",
+                                                        "Currency": "@triggerBody()?['currency']",
+                                                        "Location": "@triggerBody()?['location']",
+                                                        "Timestamp": "@triggerBody()?['timestamp']",
+                                                        "Description": "@triggerBody()?['description']",
+                                                        "FlaggedReason": "Normal"
+                                                    },
+                                                    "path": "/codeless/v1.2/drives/me/items/@{encodeURIComponent(parameters('excel_drive_id'))}/workbook/tables/@{encodeURIComponent(parameters('excel_table_name'))}/rows",
+                                                    "queries": {
+                                                        "source": "me",
+                                                        "dateTimeFormat": "ISO 8601"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "expression": {
+                                        "or": [
+                                            { "greaterOrEquals": ["@triggerBody()?['amount']", "@10000"] },
+                                            { "not": { "equals": ["@toUpper(triggerBody()?['currency'])", "INR"] } }
+                                        ]
+                                    },
+                                    "type": "If"
+                                }
+                            },
+                            "runAfter": {},
+                            "type": "Scope"
+                        },
+                        "Catch": {
+                            "actions": {
+                                "Send_email_(V2)_-_Error_Alert": {
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['gmail']['connectionId']"
+                                            }
+                                        },
+                                        "method": "post",
+                                        "body": {
+                                            "To": "[parameters('failed_transaction_email_to')]",
+                                            "Importance": "Normal",
+                                            "Subject": "Logic App LA-bankTransactionAlert Failure",
+                                            "Body": "<p class=\"editor-paragraph\">Hi Team,<br><br>The Logic App \"BankTransactionAlertLogicApp\" failed during execution.<br><br>Details:<br>- 🔹 Status: Failed<br>- 🔹 Time: @{utcNow()}<br>- 🔹 Run ID: @{workflow().run.id}<br>- 🔹 Error Message: @{workflow().error.message}<br><br>Regards,  <br>AIS Monitoring Team</p><br>"
+                                        },
+                                        "path": "/v2/Mail"
+                                    }
+                                },
+                                "Terminate_with_Failure": {
+                                  "type": "Terminate",
+                                  "inputs": {
+                                    "status": "Failed",
+                                    "message": "Transaction Logic App failed after error notification."
+                                  },
+                                  "runAfter": {
+                                    "Send_email_(V2)_-_Error_Alert": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                }
+                            },
+                            "runAfter": {
+                                "Try": ["Failed", "TimedOut"]
+                            },
+                            "type": "Scope"
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "gmail": {
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/gmail')]",
+                                "connectionId": "[parameters('connections_gmail_externalid')]",
+                                "connectionName": "gmail"
+                            },
+                            "excelonline": {
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/excelonline')]",
+                                "connectionId": "[parameters('connections_excelonline_externalid')]",
+                                "connectionName": "excelonline"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}
